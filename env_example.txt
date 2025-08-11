@@ -1,0 +1,17 @@
+# Copy this file to .env and fill in your values
+
+# Flask Configuration
+FLASK_ENV=development
+SECRET_KEY=change-this-to-a-random-string-minimum-32-characters
+
+# AI Provider - Choose: 'openai', 'anthropic', or 'mock'
+AI_PROVIDER=openai
+
+# OpenAI Configuration (if using OpenAI)
+OPENAI_API_KEY=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
+
+# Anthropic Configuration (if using Anthropic)
+ANTHROPIC_API_KEY=sk-ant-your-anthropic-api-key-here
+
+# Server
+PORT=5000

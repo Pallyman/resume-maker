@@ -1,0 +1,20 @@
+# Core Flask dependencies
+Flask==3.0.0
+flask-cors==4.0.0
+flask-limiter==3.5.0
+
+# Environment and Configuration
+python-dotenv==1.0.0
+
+# Gunicorn for production deployment
+gunicorn==21.2.0
+
+# AI Providers (install both or comment out the one you don't need)
+openai==1.6.1
+anthropic==0.8.1
+
+# Data handling
+Jinja2==3.1.2
+
+# Additional utilities
+requests==2.31.0
