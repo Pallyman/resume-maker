@@ -67,6 +67,80 @@
             box-shadow: 0 20px 60px rgba(0,0,0,0.15);
         }
 
+        /* File Upload Area */
+        .file-upload-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .file-upload-area {
+            border: 2px dashed rgba(255, 255, 255, 0.5);
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .file-upload-area:hover {
+            border-color: rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .file-upload-area.dragover {
+            border-color: #10b981;
+            background: rgba(16, 185, 129, 0.2);
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            margin-bottom: 10px;
+        }
+
+        .upload-text {
+            font-size: 1.1rem;
+            margin-bottom: 5px;
+        }
+
+        .upload-subtext {
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+
+        .file-info {
+            margin-top: 15px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            display: none;
+        }
+
+        .file-info.show {
+            display: block;
+        }
+
+        .extract-btn {
+            background: white;
+            color: var(--primary);
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            margin-top: 10px;
+            transition: all 0.3s;
+        }
+
+        .extract-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
         .form-section {
             margin-bottom: 25px;
         }
@@ -251,11 +325,6 @@
             box-shadow: 0 0 20px rgba(0,0,0,0.1);
         }
 
-        /* Resume Templates */
-        .template-modern {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-
         .template-modern h1 {
             color: var(--primary);
             border-bottom: 3px solid var(--primary);
@@ -283,32 +352,9 @@
             font-size: 2rem;
         }
 
-        .template-classic .contact-info {
-            text-align: center;
-            margin-bottom: 20px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid var(--dark);
-        }
-
         .template-minimal {
             font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
             color: #333;
-        }
-
-        .template-minimal h1 {
-            font-weight: 300;
-            font-size: 2.5rem;
-            margin-bottom: 5px;
-        }
-
-        .template-minimal h2 {
-            font-weight: 400;
-            font-size: 1rem;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            margin-top: 30px;
-            margin-bottom: 10px;
-            color: #666;
         }
 
         .loading {
@@ -422,12 +468,27 @@
     <div class="container">
         <div class="header">
             <h1>🚀 AI-Powered Resume Builder</h1>
-            <p>Create professional resumes with AI assistance in minutes</p>
+            <p>Create professional resumes with AI assistance or upload your existing documents</p>
         </div>
 
         <div class="main-content">
             <!-- Form Panel -->
             <div class="panel">
+                <!-- File Upload Section -->
+                <div class="file-upload-section">
+                    <h4>📄 Upload Existing Resume/Document (Optional)</h4>
+                    <div class="file-upload-area" id="uploadArea">
+                        <div class="upload-icon">📁</div>
+                        <div class="upload-text">Click to upload or drag and drop</div>
+                        <div class="upload-subtext">Supports TXT, PDF, DOC, DOCX files</div>
+                    </div>
+                    <input type="file" id="fileInput" accept=".txt,.pdf,.doc,.docx" style="display: none;">
+                    <div class="file-info" id="fileInfo">
+                        <p>File: <span id="fileName"></span></p>
+                        <button class="extract-btn" onclick="extractFromFile()">Extract Information</button>
+                    </div>
+                </div>
+
                 <!-- AI Assistant Section -->
                 <div class="ai-section">
                     <h4>✨ AI Assistant</h4>
@@ -543,7 +604,7 @@
                 <div id="resumePreview" class="resume-preview template-modern">
                     <p style="text-align: center; color: #999; margin-top: 200px;">
                         Your resume preview will appear here...<br>
-                        Start by filling in your information or use AI to generate content
+                        Upload a document, use AI to generate content, or fill in your information manually
                     </p>
                 </div>
             </div>
@@ -563,6 +624,140 @@
 
         let experienceCount = 0;
         let educationCount = 0;
+        let uploadedFileContent = null;
+
+        // File Upload Handling
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+
+        uploadArea.addEventListener('click', () => fileInput.click());
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileUpload(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileUpload(e.target.files[0]);
+            }
+        });
+
+        function handleFileUpload(file) {
+            const validTypes = ['text/plain', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+            
+            if (!validTypes.includes(file.type) && !file.name.endsWith('.txt')) {
+                alert('Please upload a valid file (TXT, PDF, DOC, DOCX)');
+                return;
+            }
+
+            fileName.textContent = file.name;
+            fileInfo.classList.add('show');
+
+            // Read file content
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                uploadedFileContent = e.target.result;
+            };
+            reader.readAsText(file);
+        }
+
+        async function extractFromFile() {
+            if (!uploadedFileContent) {
+                alert('No file content available');
+                return;
+            }
+
+            // Show loading
+            document.getElementById('aiButtonText').style.display = 'none';
+            document.getElementById('aiLoader').style.display = 'inline-block';
+
+            try {
+                // Make API call to extract information
+                const response = await fetch('/api/extract', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        content: uploadedFileContent
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to extract information');
+                }
+
+                const extractedData = await response.json();
+                
+                // Populate fields with extracted data
+                if (extractedData.name) document.getElementById('fullName').value = extractedData.name;
+                if (extractedData.title) document.getElementById('title').value = extractedData.title;
+                if (extractedData.email) document.getElementById('email').value = extractedData.email;
+                if (extractedData.phone) document.getElementById('phone').value = extractedData.phone;
+                if (extractedData.location) document.getElementById('location').value = extractedData.location;
+                if (extractedData.summary) document.getElementById('summary').value = extractedData.summary;
+                
+                // Add skills
+                if (extractedData.skills) {
+                    extractedData.skills.forEach(skill => addSkill(skill));
+                }
+
+                // Add experience
+                if (extractedData.experience) {
+                    extractedData.experience.forEach(exp => {
+                        addExperience();
+                        const id = `exp_${experienceCount - 1}`;
+                        document.getElementById(`${id}_title`).value = exp.title || '';
+                        document.getElementById(`${id}_company`).value = exp.company || '';
+                        document.getElementById(`${id}_duration`).value = exp.duration || '';
+                        document.getElementById(`${id}_description`).value = exp.description || '';
+                    });
+                }
+
+                // Add education
+                if (extractedData.education) {
+                    extractedData.education.forEach(edu => {
+                        addEducation();
+                        const id = `edu_${educationCount - 1}`;
+                        document.getElementById(`${id}_degree`).value = edu.degree || '';
+                        document.getElementById(`${id}_institution`).value = edu.institution || '';
+                        document.getElementById(`${id}_year`).value = edu.year || '';
+                        document.getElementById(`${id}_info`).value = edu.info || '';
+                    });
+                }
+
+                updatePreview();
+                alert('Information extracted successfully!');
+
+            } catch (error) {
+                console.error('Error extracting from file:', error);
+                
+                // Fallback: Just put the content in the summary for manual editing
+                document.getElementById('summary').value = uploadedFileContent.substring(0, 1000);
+                alert('Could not automatically extract all fields. Please review and edit manually.');
+            }
+
+            // Hide loading
+            document.getElementById('aiButtonText').style.display = 'inline';
+            document.getElementById('aiLoader').style.display = 'none';
+        }
 
         // Template selection
         function selectTemplate(template) {
@@ -716,10 +911,6 @@
             if (resumeData.personal.fullName) {
                 html += `<h1>${resumeData.personal.fullName}</h1>`;
                 
-                if (resumeData.template === 'classic') {
-                    html += '<div class="contact-info">';
-                }
-
                 if (resumeData.personal.title) {
                     html += `<p style="font-size: 1.2rem; color: #666; margin-bottom: 10px;">${resumeData.personal.title}</p>`;
                 }
@@ -739,10 +930,6 @@
                 
                 if (links.length > 0) {
                     html += `<p>${links.join(' • ')}</p>`;
-                }
-
-                if (resumeData.template === 'classic') {
-                    html += '</div>';
                 }
             }
 
@@ -814,7 +1001,7 @@
             preview.innerHTML = html || '<p style="text-align: center; color: #999; margin-top: 200px;">Start filling in your information to see the preview...</p>';
         }
 
-        // AI Generation (Simulated)
+        // AI Generation with backend API
         async function generateWithAI() {
             const role = document.getElementById('aiRole').value;
             const company = document.getElementById('aiCompany').value;
@@ -829,50 +1016,58 @@
             document.getElementById('aiButtonText').style.display = 'none';
             document.getElementById('aiLoader').style.display = 'inline-block';
 
-            // Simulate AI generation delay
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            try {
+                const response = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        role: role,
+                        company: company,
+                        keywords: keywords,
+                        experience_level: 'mid',
+                        tone: 'professional'
+                    })
+                });
 
-            // Generate sample content based on input
-            const samples = {
-                summary: `Results-driven ${role} with extensive experience in ${keywords || 'cutting-edge technologies'}. Proven track record of delivering high-impact solutions ${company ? `in ${company} environments` : 'across diverse industries'}. Passionate about innovation, team collaboration, and continuous learning.`,
+                if (!response.ok) {
+                    throw new Error('Failed to generate content');
+                }
+
+                const content = await response.json();
+
+                // Apply generated content
+                document.getElementById('summary').value = content.summary || '';
                 
-                experience: {
-                    title: role,
-                    company: company || 'Leading Tech Company',
-                    duration: 'Jan 2022 - Present',
-                    description: `• Spearheaded development of scalable solutions using ${keywords || 'modern technologies'}
-• Collaborated with cross-functional teams to deliver projects 20% ahead of schedule
-• Mentored junior developers and conducted code reviews to maintain high quality standards
-• Implemented best practices that improved system performance by 35%`
-                },
+                // Add skills
+                if (content.skills) {
+                    content.skills.forEach(skill => addSkill(skill));
+                }
 
-                skills: keywords ? keywords.split(',').map(s => s.trim()) : ['JavaScript', 'Python', 'React', 'Node.js', 'AWS', 'Docker', 'Git', 'Agile']
-            };
+                // Add experience if none exists
+                if (content.experience_bullets && document.querySelectorAll('.experience-item').length === 0) {
+                    addExperience();
+                    setTimeout(() => {
+                        const expId = `exp_${experienceCount - 1}`;
+                        document.getElementById(`${expId}_title`).value = role;
+                        document.getElementById(`${expId}_company`).value = company || 'Leading Company';
+                        document.getElementById(`${expId}_duration`).value = 'Jan 2022 - Present';
+                        document.getElementById(`${expId}_description`).value = content.experience_bullets.map(b => `• ${b}`).join('\n');
+                    }, 100);
+                }
 
-            // Apply generated content
-            document.getElementById('summary').value = samples.summary;
-            
-            // Add experience if none exists
-            if (document.querySelectorAll('.experience-item').length === 0) {
-                addExperience();
-                setTimeout(() => {
-                    const expId = `exp_${experienceCount - 1}`;
-                    document.getElementById(`${expId}_title`).value = samples.experience.title;
-                    document.getElementById(`${expId}_company`).value = samples.experience.company;
-                    document.getElementById(`${expId}_duration`).value = samples.experience.duration;
-                    document.getElementById(`${expId}_description`).value = samples.experience.description;
-                }, 100);
+                // Update preview
+                setTimeout(updatePreview, 200);
+
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to generate content. Please check your connection and try again.');
             }
-
-            // Add skills
-            samples.skills.forEach(skill => addSkill(skill));
 
             // Hide loading
             document.getElementById('aiButtonText').style.display = 'inline';
             document.getElementById('aiLoader').style.display = 'none';
-
-            // Update preview
-            setTimeout(updatePreview, 200);
         }
 
         // Download as PDF
@@ -900,6 +1095,8 @@
                 renderSkills();
                 experienceCount = 0;
                 educationCount = 0;
+                uploadedFileContent = null;
+                fileInfo.classList.remove('show');
                 updatePreview();
             }
         }
@@ -932,7 +1129,6 @@
                         resumeData.skills = data.skills;
                         renderSkills();
                     }
-                    // Note: Experience and Education restoration would need more complex logic
                 } catch (e) {
                     console.error('Error loading saved data:', e);
                 }

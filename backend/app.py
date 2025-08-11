@@ -557,6 +557,117 @@ def analyze_ats():
         logger.error(f"ATS analysis error: {e}")
         return jsonify({"error": "Failed to analyze resume"}), 500
 
+@app.route('/api/extract', methods=['POST'])
+@limiter.limit("10 per hour")
+def extract_from_document():
+    """Extract resume information from uploaded document text"""
+    try:
+        data = request.json
+        content = data.get('content', '')
+        
+        if not content:
+            return jsonify({"error": "No content provided"}), 400
+        
+        # Use AI to extract structured data if available
+        if ai_client and Config.AI_PROVIDER == 'openai':
+            try:
+                prompt = """Extract the following information from this resume/document text:
+                - name: Full name of the person
+                - title: Current or desired professional title
+                - email: Email address
+                - phone: Phone number
+                - location: City, State/Country
+                - summary: Professional summary (2-3 sentences)
+                - skills: List of skills (array)
+                - experience: Array of work experiences with {title, company, duration, description}
+                - education: Array of education with {degree, institution, year, info}
+                
+                Return ONLY valid JSON with these keys. If a field is not found, use empty string or empty array.
+                """
+                
+                response = ai_client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": "You are a resume parser. Extract information and return only valid JSON."},
+                        {"role": "user", "content": f"{prompt}\n\nResume text:\n{content[:3000]}"}  # Limit content length
+                    ],
+                    temperature=0.1,
+                    max_tokens=1500
+                )
+                
+                extracted = json.loads(response.choices[0].message.content)
+                return jsonify(extracted)
+                
+            except Exception as e:
+                logger.error(f"AI extraction failed: {e}")
+                # Fall through to basic extraction
+        
+        # Basic extraction without AI
+        lines = content.split('\n')
+        extracted = {
+            "name": "",
+            "title": "",
+            "email": "",
+            "phone": "",
+            "location": "",
+            "summary": "",
+            "skills": [],
+            "experience": [],
+            "education": []
+        }
+        
+        # Try to find email
+        import re
+        email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+        email_match = re.search(email_pattern, content)
+        if email_match:
+            extracted["email"] = email_match.group()
+        
+        # Try to find phone
+        phone_pattern = r'[\+]?[(]?[0-9]{1,3}[)]?[-.\s]?[(]?[0-9]{1,4}[)]?[-.\s]?[0-9]{1,4}[-.\s]?[0-9]{1,9}'
+        phone_match = re.search(phone_pattern, content)
+        if phone_match:
+            extracted["phone"] = phone_match.group()
+        
+        # Try to extract name (usually first non-empty line)
+        for line in lines:
+            if line.strip() and len(line.strip()) < 50 and not any(char in line for char in ['@', 'http', 'www']):
+                extracted["name"] = line.strip()
+                break
+        
+        # Extract summary (look for summary/objective section)
+        summary_keywords = ['summary', 'objective', 'profile', 'about']
+        for i, line in enumerate(lines):
+            if any(keyword in line.lower() for keyword in summary_keywords):
+                # Get next few lines as summary
+                summary_lines = []
+                for j in range(i+1, min(i+4, len(lines))):
+                    if lines[j].strip():
+                        summary_lines.append(lines[j].strip())
+                extracted["summary"] = ' '.join(summary_lines)[:500]
+                break
+        
+        # Extract skills (look for skills section)
+        skills_keywords = ['skills', 'technologies', 'competencies', 'expertise']
+        for i, line in enumerate(lines):
+            if any(keyword in line.lower() for keyword in skills_keywords):
+                # Get next few lines and extract skills
+                skills_text = ' '.join(lines[i+1:i+5])
+                # Split by common delimiters
+                potential_skills = re.split(r'[,;•·|]', skills_text)
+                extracted["skills"] = [s.strip() for s in potential_skills if 10 < len(s.strip()) < 30][:15]
+                break
+        
+        # If no sections found, use first 500 chars as summary
+        if not extracted["summary"]:
+            extracted["summary"] = ' '.join(content.split()[:100])
+        
+        return jsonify(extracted)
+    
+    except Exception as e:
+        logger.error(f"Document extraction error: {e}")
+        return jsonify({"error": "Failed to extract information from document"}), 500
+
 @app.errorhandler(429)
 def ratelimit_handler(e):
     """Handle rate limit exceeded"""
