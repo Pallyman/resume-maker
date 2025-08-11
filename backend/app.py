@@ -2,7 +2,6 @@
 """
 AI-Powered Resume Builder Backend
 Complete production-ready Flask application with AI integration
-Save this as: resume_backend.py
 """
 
 import os
@@ -12,12 +11,12 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional
 from dataclasses import dataclass, asdict
+from pathlib import Path
 
 from flask import Flask, request, jsonify, send_file, render_template_string
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-import redis
 from dotenv import load_dotenv
 
 # For AI providers (install what you need)
@@ -42,14 +41,14 @@ load_dotenv()
 
 # Initialize Flask app
 app = Flask(__name__)
-CORS(app, origins=["http://localhost:*", "http://127.0.0.1:*"])
+CORS(app, origins=["http://localhost:*", "http://127.0.0.1:*", "https://*.onrender.com"])
 
 # Set up rate limiting
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
     default_limits=["100 per hour"],
-    storage_uri="redis://localhost:6379" if os.getenv("REDIS_URL") else "memory://"
+    storage_uri="memory://"  # Using memory instead of Redis
 )
 
 # Configure logging
@@ -73,8 +72,8 @@ app.config.from_object(Config)
 
 # Initialize AI clients
 if Config.AI_PROVIDER == 'openai' and openai and Config.OPENAI_API_KEY:
-    openai.api_key = Config.OPENAI_API_KEY
-    ai_client = openai
+    from openai import OpenAI
+    ai_client = OpenAI(api_key=Config.OPENAI_API_KEY)
 elif Config.AI_PROVIDER == 'anthropic' and anthropic and Config.ANTHROPIC_API_KEY:
     ai_client = anthropic.Anthropic(api_key=Config.ANTHROPIC_API_KEY)
 else:
@@ -117,20 +116,18 @@ class AIContentGenerator:
         {f'Key skills/keywords: {request.keywords}' if request.keywords else ''}
         Tone: {request.tone}
         
-        Provide:
-        1. A compelling professional summary (2-3 sentences)
-        2. 5 strong achievement-focused bullet points for work experience
-        3. 10-12 relevant technical and soft skills
-        4. 3 key achievements or metrics
-        
-        Format as JSON with keys: summary, bullets, skills, achievements
+        Return JSON with these exact keys:
+        - summary: A compelling professional summary (2-3 sentences)
+        - bullets: Array of 5 achievement-focused bullet points
+        - skills: Array of 10-12 relevant skills
+        - achievements: Array of 3 key achievements
         """
         
         try:
-            response = openai.ChatCompletion.create(
-                model="gpt-4" if "gpt-4" in os.getenv("OPENAI_MODEL", "") else "gpt-3.5-turbo",
+            response = ai_client.chat.completions.create(
+                model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "You are an expert resume writer and career coach."},
+                    {"role": "system", "content": "You are an expert resume writer. Return only valid JSON."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.7,
@@ -161,13 +158,7 @@ class AIContentGenerator:
         {f'Key skills/keywords: {request.keywords}' if request.keywords else ''}
         Tone: {request.tone}
         
-        Provide:
-        1. A compelling professional summary (2-3 sentences)
-        2. 5 strong achievement-focused bullet points for work experience
-        3. 10-12 relevant technical and soft skills
-        4. 3 key achievements or metrics
-        
-        Return as JSON with keys: summary, bullets, skills, achievements
+        Return JSON with keys: summary, bullets, skills, achievements
         """
         
         try:
@@ -197,70 +188,63 @@ class AIContentGenerator:
         templates = {
             "junior": {
                 "summary": f"Motivated {role} with strong foundation in {request.keywords or 'modern technologies'}. "
-                          f"Eager to contribute to innovative projects and grow expertise in a collaborative environment. "
-                          f"Quick learner with passion for continuous improvement and delivering quality results.",
+                          f"Eager to contribute to innovative projects and grow expertise in a collaborative environment.",
                 "bullets": [
-                    f"Developed and maintained features for production applications using {request.keywords or 'industry-standard tools'}",
-                    "Collaborated with senior developers to implement best practices and coding standards",
-                    "Participated in code reviews and contributed to technical documentation",
-                    "Assisted in debugging and resolving technical issues, improving system stability by 15%",
-                    "Completed all assigned tasks on schedule while maintaining high code quality"
+                    f"Developed and maintained features using {request.keywords or 'industry-standard tools'}",
+                    "Collaborated with senior developers to implement best practices",
+                    "Participated in code reviews and technical documentation",
+                    "Assisted in debugging and resolving technical issues",
+                    "Completed all assigned tasks on schedule"
                 ]
             },
             "mid": {
-                "summary": f"Experienced {role} with proven track record of delivering high-quality solutions in "
-                          f"{request.industry or 'fast-paced environments'}. Skilled in {request.keywords or 'full-stack development'} "
-                          f"with focus on scalability and performance. Strong collaborator who bridges technical and business needs.",
+                "summary": f"Experienced {role} with proven track record in {request.industry or 'technology'}. "
+                          f"Skilled in {request.keywords or 'full-stack development'} with focus on quality and performance.",
                 "bullets": [
-                    f"Led development of key features using {request.keywords or 'cutting-edge technologies'}, resulting in 30% performance improvement",
-                    "Mentored junior developers and conducted code reviews to maintain high quality standards",
-                    "Architected and implemented scalable solutions handling 10K+ daily active users",
-                    "Collaborated with product managers to translate business requirements into technical specifications",
-                    "Reduced deployment time by 40% through automation and CI/CD pipeline optimization"
+                    f"Led development of key features using {request.keywords or 'modern tech stack'}",
+                    "Mentored junior developers and conducted code reviews",
+                    "Architected scalable solutions handling 10K+ users",
+                    "Collaborated with product managers on requirements",
+                    "Improved deployment efficiency by 40%"
                 ]
             },
             "senior": {
-                "summary": f"Senior {role} with {request.industry or 'extensive cross-industry'} expertise and "
-                          f"deep knowledge of {request.keywords or 'enterprise architectures'}. Proven leader in "
-                          f"driving technical innovation and delivering complex projects. Expert at building high-performing teams.",
+                "summary": f"Senior {role} with extensive expertise in {request.keywords or 'enterprise solutions'}. "
+                          f"Proven leader in driving technical innovation and delivering complex projects.",
                 "bullets": [
-                    f"Architected enterprise-scale solutions using {request.keywords or 'microservices and cloud technologies'}",
-                    "Led team of 8+ developers to deliver critical projects 20% under budget and ahead of schedule",
-                    "Established coding standards and best practices adopted across entire engineering organization",
-                    "Reduced operational costs by 35% through strategic technology choices and optimization",
-                    "Presented technical strategies to C-level executives and secured buy-in for major initiatives"
+                    f"Architected enterprise solutions using {request.keywords or 'cloud technologies'}",
+                    "Led team of 8+ developers delivering critical projects",
+                    "Established coding standards adopted organization-wide",
+                    "Reduced operational costs by 35% through optimization",
+                    "Presented strategies to C-level executives"
                 ]
             },
             "executive": {
-                "summary": f"Visionary technology executive and {role} with track record of transforming organizations through "
-                          f"strategic innovation. Expert in {request.keywords or 'digital transformation'} with proven ability to "
-                          f"align technology initiatives with business objectives. Builder of world-class engineering teams.",
+                "summary": f"Visionary technology executive and {role} with track record of transformation. "
+                          f"Expert in {request.keywords or 'digital innovation'} and team building.",
                 "bullets": [
-                    f"Directed technology strategy for {request.company or 'Fortune 500 company'}, driving 50% increase in efficiency",
-                    "Built and scaled engineering organization from 10 to 100+ professionals across 3 continents",
-                    "Secured $10M+ in cost savings through strategic vendor negotiations and architecture optimization",
-                    "Launched innovative products generating $25M+ in new revenue streams",
-                    "Established partnerships with key technology providers to accelerate innovation"
+                    f"Directed technology strategy driving 50% efficiency increase",
+                    "Built engineering organization from 10 to 100+ professionals",
+                    "Secured $10M+ in cost savings through optimization",
+                    "Launched products generating $25M+ revenue",
+                    "Established strategic technology partnerships"
                 ]
             }
         }
         
         template = templates.get(level, templates["mid"])
         
-        # Generate skills based on role and keywords
-        base_skills = ["Leadership", "Problem Solving", "Communication", "Team Collaboration", "Project Management"]
+        skills = ["Python", "JavaScript", "React", "Node.js", "AWS", "Docker", 
+                 "Git", "Agile", "Leadership", "Communication"]
         
         if request.keywords:
-            tech_skills = [s.strip() for s in request.keywords.split(',')][:7]
-        else:
-            tech_skills = ["Python", "JavaScript", "Cloud Architecture", "DevOps", "Agile"]
-        
-        skills = tech_skills + base_skills
+            custom_skills = [s.strip() for s in request.keywords.split(',')][:5]
+            skills = custom_skills + skills[:5]
         
         achievements = [
-            f"Increased team productivity by 25% through process improvements",
-            f"Received '{role} of the Year' award for exceptional performance",
-            f"Successfully delivered {3 if level == 'junior' else 10}+ major projects on time and within budget"
+            "Increased team productivity by 25%",
+            f"Delivered {5 if level == 'junior' else 15}+ successful projects",
+            "Received excellence award for outstanding performance"
         ]
         
         return ResumeContent(
@@ -289,16 +273,14 @@ RESUME_TEMPLATES = {
         <style>
             body { font-family: 'Segoe UI', Arial, sans-serif; margin: 40px; color: #333; }
             h1 { color: #2563eb; border-bottom: 3px solid #2563eb; padding-bottom: 10px; }
-            h2 { color: #1e40af; margin-top: 25px; text-transform: uppercase; font-size: 14px; letter-spacing: 1px; }
-            .contact { color: #666; margin-bottom: 20px; }
+            h2 { color: #1e40af; margin-top: 25px; text-transform: uppercase; font-size: 14px; }
             .section { margin-bottom: 25px; }
             ul { margin-left: 20px; }
-            li { margin-bottom: 5px; }
         </style>
     </head>
     <body>
         <h1>{{ name }}</h1>
-        <div class="contact">{{ email }} | {{ phone }} | {{ location }}</div>
+        <div>{{ email }} | {{ phone }} | {{ location }}</div>
         <div class="section">
             <h2>Professional Summary</h2>
             <p>{{ summary }}</p>
@@ -318,43 +300,93 @@ RESUME_TEMPLATES = {
     </body>
     </html>
     """,
-    
     "classic": """
     <!DOCTYPE html>
     <html>
     <head>
         <style>
-            body { font-family: Georgia, 'Times New Roman', serif; margin: 40px; color: #000; }
-            h1 { text-align: center; font-size: 28px; margin-bottom: 10px; }
-            .contact { text-align: center; border-bottom: 2px solid #000; padding-bottom: 15px; margin-bottom: 20px; }
-            h2 { font-size: 16px; margin-top: 20px; border-bottom: 1px solid #000; }
-            .section { margin-bottom: 20px; }
-            ul { margin-left: 25px; }
+            body { font-family: Georgia, serif; margin: 40px; }
+            h1 { text-align: center; }
+            h2 { border-bottom: 1px solid #000; }
         </style>
     </head>
     <body>
         <h1>{{ name }}</h1>
-        <div class="contact">{{ email }} • {{ phone }} • {{ location }}</div>
-        <div class="section">
-            <h2>Professional Summary</h2>
-            <p>{{ summary }}</p>
-        </div>
-        <div class="section">
-            <h2>Professional Experience</h2>
-            <ul>
-            {% for bullet in experience_bullets %}
-                <li>{{ bullet }}</li>
-            {% endfor %}
-            </ul>
-        </div>
-        <div class="section">
-            <h2>Core Competencies</h2>
-            <p>{{ skills | join(', ') }}</p>
-        </div>
+        <div style="text-align: center;">{{ email }} • {{ phone }}</div>
+        <h2>Summary</h2>
+        <p>{{ summary }}</p>
+        <h2>Experience</h2>
+        <ul>
+        {% for bullet in experience_bullets %}
+            <li>{{ bullet }}</li>
+        {% endfor %}
+        </ul>
+        <h2>Skills</h2>
+        <p>{{ skills | join(', ') }}</p>
     </body>
     </html>
     """
 }
+
+# CRITICAL: Routes to serve the frontend
+@app.route('/')
+@app.route('/index.html')
+@app.route('/resume-builder.html')
+def serve_frontend():
+    """Serve the frontend HTML file"""
+    # Try to find the frontend file
+    frontend_path = Path(__file__).parent.parent / 'frontend' / 'resume-builder.html'
+    
+    try:
+        if frontend_path.exists():
+            with open(frontend_path, 'r', encoding='utf-8') as f:
+                return f.read(), 200, {'Content-Type': 'text/html'}
+    except Exception as e:
+        logger.error(f"Error serving frontend: {e}")
+    
+    # If frontend file not found, show a working API message
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Resume Builder API</title>
+        <style>
+            body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+            h1 { color: #2563eb; }
+            .endpoint { background: #f3f4f6; padding: 10px; margin: 10px 0; border-radius: 5px; }
+            code { background: #1f2937; color: #10b981; padding: 2px 5px; border-radius: 3px; }
+        </style>
+    </head>
+    <body>
+        <h1>🚀 Resume Builder API is Running!</h1>
+        <p>The backend is working, but the frontend file was not found at the expected location.</p>
+        
+        <h2>Available API Endpoints:</h2>
+        <div class="endpoint">
+            <strong>GET</strong> <code>/health</code> - Check API health
+        </div>
+        <div class="endpoint">
+            <strong>POST</strong> <code>/api/generate</code> - Generate AI resume content
+        </div>
+        <div class="endpoint">
+            <strong>POST</strong> <code>/api/improve</code> - Improve existing content
+        </div>
+        <div class="endpoint">
+            <strong>POST</strong> <code>/api/suggestions/skills</code> - Get skill suggestions
+        </div>
+        <div class="endpoint">
+            <strong>POST</strong> <code>/api/analyze/ats</code> - ATS compatibility check
+        </div>
+        
+        <h2>Test the API:</h2>
+        <pre style="background: #f3f4f6; padding: 15px; border-radius: 5px;">
+curl -X POST https://resume-maker-zrbl.onrender.com/api/generate \\
+  -H "Content-Type: application/json" \\
+  -d '{"role": "Software Engineer", "experience_level": "mid"}'
+        </pre>
+    </body>
+    </html>
+    """, 200
 
 # API Routes
 @app.route('/health', methods=['GET'])
@@ -374,11 +406,9 @@ def generate_content():
     try:
         data = request.json
         
-        # Validate input
         if not data.get('role'):
             return jsonify({"error": "Role is required"}), 400
         
-        # Create request object
         resume_request = ResumeRequest(
             role=data.get('role'),
             company=data.get('company'),
@@ -388,10 +418,8 @@ def generate_content():
             tone=data.get('tone', 'professional')
         )
         
-        # Generate content
         content = AIContentGenerator.generate(resume_request)
         
-        # Return response
         return jsonify(asdict(content))
     
     except Exception as e:
@@ -405,13 +433,11 @@ def improve_content():
     try:
         data = request.json
         original_text = data.get('text', '')
-        section = data.get('section', 'summary')  # summary, experience, skills
+        section = data.get('section', 'summary')
         
         if not original_text:
             return jsonify({"error": "Text is required"}), 400
         
-        # This would call AI to improve the text
-        # For now, return a simple enhancement
         improved = f"[Enhanced] {original_text}"
         
         return jsonify({"improved": improved})
@@ -428,15 +454,12 @@ def export_pdf():
         data = request.json
         template_name = data.get('template', 'modern')
         
-        # Get template
         template = RESUME_TEMPLATES.get(template_name, RESUME_TEMPLATES['modern'])
         
-        # Render HTML
         from jinja2 import Template
         html_content = Template(template).render(**data)
         
         if HTML:
-            # Generate PDF using WeasyPrint
             pdf = HTML(string=html_content).write_pdf()
             
             return send_file(
@@ -446,7 +469,6 @@ def export_pdf():
                 download_name=f"resume_{datetime.now().strftime('%Y%m%d')}.pdf"
             )
         else:
-            # Fallback: return HTML for browser printing
             return html_content, 200, {'Content-Type': 'text/html'}
     
     except Exception as e:
@@ -470,28 +492,22 @@ def suggest_skills():
         role = data.get('role', '')
         current_skills = data.get('current_skills', [])
         
-        # This would use AI or a database of skills
-        # For now, return common suggestions
         skill_map = {
-            "software": ["Python", "JavaScript", "React", "Node.js", "Git", "Docker", "AWS", "Agile"],
-            "data": ["Python", "SQL", "Pandas", "NumPy", "Tableau", "Machine Learning", "Statistics", "ETL"],
-            "design": ["Figma", "Adobe Creative Suite", "UI/UX", "Wireframing", "Prototyping", "User Research"],
-            "marketing": ["SEO", "Google Analytics", "Content Strategy", "Social Media", "Email Marketing", "CRM"],
-            "default": ["Communication", "Problem Solving", "Leadership", "Time Management", "Teamwork"]
+            "software": ["Python", "JavaScript", "React", "Node.js", "Git", "Docker", "AWS"],
+            "data": ["Python", "SQL", "Pandas", "NumPy", "Tableau", "Machine Learning"],
+            "design": ["Figma", "Adobe Creative Suite", "UI/UX", "Wireframing"],
+            "marketing": ["SEO", "Google Analytics", "Content Strategy", "Social Media"],
+            "default": ["Communication", "Problem Solving", "Leadership", "Teamwork"]
         }
         
-        # Find matching skills
         role_lower = role.lower()
-        suggested = []
+        suggested = skill_map.get("default", [])
         
         for key, skills in skill_map.items():
             if key in role_lower:
-                suggested.extend(skills)
+                suggested = skills
+                break
         
-        if not suggested:
-            suggested = skill_map["default"]
-        
-        # Filter out current skills
         suggested = [s for s in suggested if s not in current_skills]
         
         return jsonify({"suggestions": suggested[:10]})
@@ -509,11 +525,9 @@ def analyze_ats():
         resume_text = data.get('text', '')
         job_description = data.get('job_description', '')
         
-        # Simple ATS analysis (would be more complex in production)
-        score = 75  # Base score
+        score = 75
         suggestions = []
         
-        # Check for keywords
         if job_description:
             job_words = set(job_description.lower().split())
             resume_words = set(resume_text.lower().split())
@@ -523,17 +537,12 @@ def analyze_ats():
             if match_rate < 0.3:
                 suggestions.append("Add more keywords from the job description")
         
-        # Check for common issues
         if len(resume_text) < 300:
             suggestions.append("Resume seems too short. Add more detail.")
             score -= 10
         
-        if len(resume_text) > 3000:
-            suggestions.append("Resume might be too long. Consider condensing.")
-            score -= 5
-        
         if not any(word in resume_text.lower() for word in ['experience', 'education', 'skills']):
-            suggestions.append("Include standard section headers: Experience, Education, Skills")
+            suggestions.append("Include standard section headers")
             score -= 15
         
         return jsonify({
@@ -577,17 +586,14 @@ if __name__ == '__main__':
     AI Available: {ai_client is not None}
     
     Endpoints:
-    - POST /api/generate - Generate AI content
-    - POST /api/improve - Improve existing content
-    - POST /api/export/pdf - Export as PDF
+    - GET  /                       - Frontend
+    - POST /api/generate           - Generate AI content
+    - POST /api/improve            - Improve existing content
+    - POST /api/export/pdf         - Export as PDF
     - POST /api/suggestions/skills - Get skill suggestions
-    - POST /api/analyze/ats - ATS compatibility check
-    - GET /api/templates - List templates
-    - GET /health - Health check
-    
-    To test: curl -X POST http://localhost:{port}/api/generate \\
-             -H "Content-Type: application/json" \\
-             -d '{{"role": "Software Engineer", "keywords": "Python, React"}}'
+    - POST /api/analyze/ats        - ATS compatibility check
+    - GET  /api/templates          - List templates
+    - GET  /health                 - Health check
     """)
     
     app.run(host='0.0.0.0', port=port, debug=debug)
