@@ -333,18 +333,24 @@ RESUME_TEMPLATES = {
 @app.route('/index.html')
 @app.route('/resume-builder.html')
 def serve_frontend():
-    """Serve the frontend HTML file"""
-    # Try to find the frontend file
-    frontend_path = Path(__file__).parent.parent / 'frontend' / 'resume-builder.html'
+    """Serve the frontend HTML file - fetch from GitHub raw content"""
+    import requests
     
     try:
-        if frontend_path.exists():
-            with open(frontend_path, 'r', encoding='utf-8') as f:
-                return f.read(), 200, {'Content-Type': 'text/html'}
+        # Fetch the HTML directly from GitHub raw content
+        response = requests.get(
+            'https://raw.githubusercontent.com/Pallyman/resume-maker/main/frontend/resume-builder.html',
+            timeout=5
+        )
+        if response.status_code == 200:
+            # Update API endpoint in the HTML to use the Render URL
+            html_content = response.text
+            html_content = html_content.replace('http://localhost:5000', 'https://resume-maker-zrbl.onrender.com')
+            return html_content, 200, {'Content-Type': 'text/html'}
     except Exception as e:
-        logger.error(f"Error serving frontend: {e}")
+        logger.error(f"Error fetching frontend from GitHub: {e}")
     
-    # If frontend file not found, show a working API message
+    # Fallback: Show API is working
     return """
     <!DOCTYPE html>
     <html>
@@ -353,13 +359,16 @@ def serve_frontend():
         <style>
             body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
             h1 { color: #2563eb; }
+            .status { background: #10b981; color: white; padding: 10px; border-radius: 5px; margin: 20px 0; }
             .endpoint { background: #f3f4f6; padding: 10px; margin: 10px 0; border-radius: 5px; }
             code { background: #1f2937; color: #10b981; padding: 2px 5px; border-radius: 3px; }
         </style>
     </head>
     <body>
-        <h1>🚀 Resume Builder API is Running!</h1>
-        <p>The backend is working, but the frontend file was not found at the expected location.</p>
+        <h1>🚀 Resume Builder API</h1>
+        <div class="status">✅ API is Running Successfully!</div>
+        
+        <p>The backend is working perfectly. Frontend loading issue - trying to fetch from GitHub.</p>
         
         <h2>Available API Endpoints:</h2>
         <div class="endpoint">
@@ -371,19 +380,12 @@ def serve_frontend():
         <div class="endpoint">
             <strong>POST</strong> <code>/api/improve</code> - Improve existing content
         </div>
-        <div class="endpoint">
-            <strong>POST</strong> <code>/api/suggestions/skills</code> - Get skill suggestions
-        </div>
-        <div class="endpoint">
-            <strong>POST</strong> <code>/api/analyze/ats</code> - ATS compatibility check
-        </div>
         
-        <h2>Test the API:</h2>
-        <pre style="background: #f3f4f6; padding: 15px; border-radius: 5px;">
-curl -X POST https://resume-maker-zrbl.onrender.com/api/generate \\
-  -H "Content-Type: application/json" \\
-  -d '{"role": "Software Engineer", "experience_level": "mid"}'
-        </pre>
+        <h2>Manual Frontend Access:</h2>
+        <p>You can access the frontend directly from GitHub:</p>
+        <a href="https://raw.githubusercontent.com/Pallyman/resume-maker/main/frontend/resume-builder.html" target="_blank">
+            View Frontend HTML
+        </a>
     </body>
     </html>
     """, 200
