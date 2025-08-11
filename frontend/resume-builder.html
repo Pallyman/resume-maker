@@ -112,16 +112,40 @@
             opacity: 0.8;
         }
 
-        .file-info {
-            margin-top: 15px;
-            padding: 10px;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 6px;
-            display: none;
+        .file-list {
+            max-height: 200px;
+            overflow-y: auto;
         }
 
-        .file-info.show {
-            display: block;
+        .file-item {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .file-item .file-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .file-item .remove-file {
+            background: rgba(239, 68, 68, 0.8);
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+
+        .file-item .remove-file:hover {
+            background: rgba(239, 68, 68, 1);
         }
 
         .extract-btn {
@@ -476,17 +500,15 @@
             <div class="panel">
                 <!-- File Upload Section -->
                 <div class="file-upload-section">
-                    <h4>📄 Upload Existing Resume/Document (Optional)</h4>
+                    <h4>📄 Upload Documents (Optional)</h4>
                     <div class="file-upload-area" id="uploadArea">
                         <div class="upload-icon">📁</div>
                         <div class="upload-text">Click to upload or drag and drop</div>
-                        <div class="upload-subtext">Supports TXT, PDF, DOC, DOCX files</div>
+                        <div class="upload-subtext">Supports multiple files: TXT, PDF, DOC, DOCX</div>
                     </div>
-                    <input type="file" id="fileInput" accept=".txt,.pdf,.doc,.docx" style="display: none;">
-                    <div class="file-info" id="fileInfo">
-                        <p>File: <span id="fileName"></span></p>
-                        <button class="extract-btn" onclick="extractFromFile()">Extract Information</button>
-                    </div>
+                    <input type="file" id="fileInput" accept=".txt,.pdf,.doc,.docx" multiple style="display: none;">
+                    <div class="file-list" id="fileList" style="margin-top: 15px;"></div>
+                    <button class="extract-btn" id="extractBtn" onclick="extractFromFiles()" style="display: none; width: 100%;">Extract Information from All Files</button>
                 </div>
 
                 <!-- AI Assistant Section -->
@@ -624,13 +646,13 @@
 
         let experienceCount = 0;
         let educationCount = 0;
-        let uploadedFileContent = null;
+        let uploadedFiles = [];
 
         // File Upload Handling
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
-        const fileInfo = document.getElementById('fileInfo');
-        const fileName = document.getElementById('fileName');
+        const fileList = document.getElementById('fileList');
+        const extractBtn = document.getElementById('extractBtn');
 
         uploadArea.addEventListener('click', () => fileInput.click());
 
@@ -647,48 +669,79 @@
             e.preventDefault();
             uploadArea.classList.remove('dragover');
             
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                handleFileUpload(files[0]);
-            }
+            const files = Array.from(e.dataTransfer.files);
+            handleMultipleFiles(files);
         });
 
         fileInput.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
-                handleFileUpload(e.target.files[0]);
+                handleMultipleFiles(Array.from(e.target.files));
             }
         });
 
-        function handleFileUpload(file) {
+        function handleMultipleFiles(files) {
             const validTypes = ['text/plain', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
             
-            if (!validTypes.includes(file.type) && !file.name.endsWith('.txt')) {
-                alert('Please upload a valid file (TXT, PDF, DOC, DOCX)');
+            files.forEach(file => {
+                if (!validTypes.includes(file.type) && !file.name.endsWith('.txt')) {
+                    alert(`${file.name} is not a valid file type. Skipping.`);
+                    return;
+                }
+
+                // Read file content
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    uploadedFiles.push({
+                        name: file.name,
+                        content: e.target.result,
+                        type: file.type,
+                        size: file.size
+                    });
+                    updateFileList();
+                };
+                reader.readAsText(file);
+            });
+        }
+
+        function updateFileList() {
+            if (uploadedFiles.length === 0) {
+                fileList.innerHTML = '';
+                extractBtn.style.display = 'none';
                 return;
             }
 
-            fileName.textContent = file.name;
-            fileInfo.classList.add('show');
-
-            // Read file content
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                uploadedFileContent = e.target.result;
-            };
-            reader.readAsText(file);
+            fileList.innerHTML = uploadedFiles.map((file, index) => `
+                <div class="file-item">
+                    <span class="file-name">📄 ${file.name}</span>
+                    <button class="remove-file" onclick="removeFile(${index})">Remove</button>
+                </div>
+            `).join('');
+            
+            extractBtn.style.display = 'block';
+            extractBtn.textContent = `Extract Information from ${uploadedFiles.length} File${uploadedFiles.length > 1 ? 's' : ''}`;
         }
 
-        async function extractFromFile() {
-            if (!uploadedFileContent) {
-                alert('No file content available');
+        function removeFile(index) {
+            uploadedFiles.splice(index, 1);
+            updateFileList();
+        }
+
+        async function extractFromFiles() {
+            if (uploadedFiles.length === 0) {
+                alert('No files to process');
                 return;
             }
 
             // Show loading
-            document.getElementById('aiButtonText').style.display = 'none';
-            document.getElementById('aiLoader').style.display = 'inline-block';
+            extractBtn.disabled = true;
+            extractBtn.textContent = 'Processing files...';
 
             try {
+                // Combine all file contents
+                const combinedContent = uploadedFiles.map(file => 
+                    `\n--- File: ${file.name} ---\n${file.content}`
+                ).join('\n\n');
+
                 // Make API call to extract information
                 const response = await fetch('/api/extract', {
                     method: 'POST',
@@ -696,7 +749,8 @@
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        content: uploadedFileContent
+                        content: combinedContent,
+                        fileCount: uploadedFiles.length
                     })
                 });
 
@@ -714,49 +768,54 @@
                 if (extractedData.location) document.getElementById('location').value = extractedData.location;
                 if (extractedData.summary) document.getElementById('summary').value = extractedData.summary;
                 
-                // Add skills
+                // Add skills (combine from all files)
                 if (extractedData.skills) {
                     extractedData.skills.forEach(skill => addSkill(skill));
                 }
 
-                // Add experience
+                // Add experience (combine from all files)
                 if (extractedData.experience) {
                     extractedData.experience.forEach(exp => {
                         addExperience();
                         const id = `exp_${experienceCount - 1}`;
-                        document.getElementById(`${id}_title`).value = exp.title || '';
-                        document.getElementById(`${id}_company`).value = exp.company || '';
-                        document.getElementById(`${id}_duration`).value = exp.duration || '';
-                        document.getElementById(`${id}_description`).value = exp.description || '';
+                        if (document.getElementById(`${id}_title`)) {
+                            document.getElementById(`${id}_title`).value = exp.title || '';
+                            document.getElementById(`${id}_company`).value = exp.company || '';
+                            document.getElementById(`${id}_duration`).value = exp.duration || '';
+                            document.getElementById(`${id}_description`).value = exp.description || '';
+                        }
                     });
                 }
 
-                // Add education
+                // Add education (combine from all files)
                 if (extractedData.education) {
                     extractedData.education.forEach(edu => {
                         addEducation();
                         const id = `edu_${educationCount - 1}`;
-                        document.getElementById(`${id}_degree`).value = edu.degree || '';
-                        document.getElementById(`${id}_institution`).value = edu.institution || '';
-                        document.getElementById(`${id}_year`).value = edu.year || '';
-                        document.getElementById(`${id}_info`).value = edu.info || '';
+                        if (document.getElementById(`${id}_degree`)) {
+                            document.getElementById(`${id}_degree`).value = edu.degree || '';
+                            document.getElementById(`${id}_institution`).value = edu.institution || '';
+                            document.getElementById(`${id}_year`).value = edu.year || '';
+                            document.getElementById(`${id}_info`).value = edu.info || '';
+                        }
                     });
                 }
 
                 updatePreview();
-                alert('Information extracted successfully!');
+                alert(`Successfully extracted information from ${uploadedFiles.length} file(s)!`);
 
             } catch (error) {
-                console.error('Error extracting from file:', error);
+                console.error('Error extracting from files:', error);
                 
-                // Fallback: Just put the content in the summary for manual editing
-                document.getElementById('summary').value = uploadedFileContent.substring(0, 1000);
-                alert('Could not automatically extract all fields. Please review and edit manually.');
+                // Fallback: Combine all content into summary for manual editing
+                const combinedText = uploadedFiles.map(f => f.content).join('\n\n');
+                document.getElementById('summary').value = combinedText.substring(0, 2000);
+                alert('Could not automatically extract all fields. Content has been added to summary for manual editing.');
             }
 
-            // Hide loading
-            document.getElementById('aiButtonText').style.display = 'inline';
-            document.getElementById('aiLoader').style.display = 'none';
+            // Reset button
+            extractBtn.disabled = false;
+            extractBtn.textContent = `Extract Information from ${uploadedFiles.length} File${uploadedFiles.length > 1 ? 's' : ''}`;
         }
 
         // Template selection
